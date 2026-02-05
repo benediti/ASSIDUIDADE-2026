@@ -71,9 +71,19 @@ def processar():
     if 'Afastamentos' not in df_aus.columns:
         st.error("Coluna 'Afastamentos' não encontrada na base de ausências.")
         return
+    # Detecta nome da coluna de data de admissão
+    col_data_adm = None
+    for nome in df_func.columns:
+        if nome.lower().replace(' ', '').replace('ç','c').replace('ã','a') in [
+            'datadeadmissao', 'dataadmissao', 'admissao']:
+            col_data_adm = nome
+            break
+    if not col_data_adm:
+        st.error("Coluna de data de admissão não encontrada na base de funcionários.")
+        return
     # Filtra por data de admissão
-    df_func['Data_Admissao'] = pd.to_datetime(df_func['Data_Admissao'], errors='coerce', dayfirst=True)
-    df_func = df_func[df_func['Data_Admissao'] <= pd.to_datetime(data_limite)]
+    df_func[col_data_adm] = pd.to_datetime(df_func[col_data_adm], errors='coerce', dayfirst=True)
+    df_func = df_func[df_func[col_data_adm] <= pd.to_datetime(data_limite)]
     # Aplica cálculo
     resultado = df_func.apply(lambda row: calcular_premio(row, df_aus), axis=1)
     df_final = pd.concat([df_func, resultado], axis=1)
