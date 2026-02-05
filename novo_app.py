@@ -160,9 +160,11 @@ def processar():
             if df_ferias.empty:
                 df_ferias = pd.DataFrame(columns=list(df_final.columns) + ['Dias_Ferias_Mes'])
 
-            # Remove quem está de férias das outras abas
-            df_direito = df_final[(df_final['Status'] == 'Tem direito') & (~df_final['Matricula'].isin(ferias_matriculas))]
-            df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito') & (~df_final['Matricula'].isin(ferias_matriculas))]
+            # Remove quem está de férias de todas as outras abas
+            filtro_nao_ferias = ~df_final['Matricula'].isin(ferias_matriculas)
+            df_direito = df_final[(df_final['Status'] == 'Tem direito') & filtro_nao_ferias]
+            df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito') & filtro_nao_ferias]
+            df_atrasos = df_atrasos[filtro_nao_ferias] if not df_atrasos.empty else df_atrasos
 
             # Aba Atrasos: todos com status "Aguardando decisão" OU afastamento de atraso
             atrasos_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]['Matricula'].unique()
