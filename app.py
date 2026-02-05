@@ -206,10 +206,13 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
             detalhes.append("Jornada 4h (50%)")
         # Adiciona informação de atestados ao status, se aplicável
         status_final = status + status_extra if status_extra else status
-        detalhes_afastamentos = "; ".join(detalhes)
+        detalhes_afastamentos = "; ".join([d for d in detalhes if d])
         # Adiciona informação explícita de quantidade de atestados nos detalhes
         if dias_atestado > 0:
-            detalhes_afastamentos += f"; Quantidade de atestados: {dias_atestado}"
+            if detalhes_afastamentos:
+                detalhes_afastamentos += f"; Quantidade de atestados: {dias_atestado}"
+            else:
+                detalhes_afastamentos = f"Quantidade de atestados: {dias_atestado}"
         resultado = {
             'Matricula': func['Matricula'],
             'Nome': func['Nome_Funcionario'],
@@ -232,7 +235,7 @@ def exportar_excel(df_mostrar, df_funcionarios):
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_export.to_excel(writer, index=False, sheet_name='Resultados Detalhados')
-        
+
         relatorio_diretoria = pd.DataFrame([
             ["RELATÓRIO DE PRÊMIOS - VISÃO EXECUTIVA", ""],
             [f"Data do relatório: {datetime.now().strftime('%d/%m/%Y')}", ""],
@@ -245,7 +248,7 @@ def exportar_excel(df_mostrar, df_funcionarios):
             ["", ""],
             ["DETALHAMENTO POR STATUS", ""],
         ])
-        
+
         for status in df_export['Status'].unique():
             df_status = df_export[df_export['Status'] == status]
             relatorio_diretoria = pd.concat([relatorio_diretoria, pd.DataFrame([
@@ -256,9 +259,27 @@ def exportar_excel(df_mostrar, df_funcionarios):
                 [", ".join(df_status['Local'].unique()), ""],
                 ["", ""]
             ])])
-        
+
         relatorio_diretoria.to_excel(writer, index=False, header=False, sheet_name='Relatório Executivo')
-    
+
+        # Adiciona aba de detalhamento de atestados
+        if 'Detalhes_Afastamentos' in df_export.columns:
+            df_atestados = df_export.copy()
+            # Extrai quantidade de atestados do texto
+            import re
+            def extrair_atestados(texto):
+                if not isinstance(texto, str):
+                    return 0
+                match = re.search(r'Quantidade de atestados: (\d+)', texto)
+                if match:
+                    return int(match.group(1))
+                return 0
+            df_atestados['Qtd_Atestados'] = df_atestados['Detalhes_Afastamentos'].apply(extrair_atestados)
+            # Filtra só quem tem atestado
+            df_atestados = df_atestados[df_atestados['Qtd_Atestados'] > 0][['Matricula','Nome','Status','Valor_Premio','Qtd_Atestados','Detalhes_Afastamentos']]
+            if not df_atestados.empty:
+                df_atestados.to_excel(writer, index=False, sheet_name='Atestados')
+
     return output.getvalue()
 
 def main():
