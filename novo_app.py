@@ -151,14 +151,20 @@ def processar():
             # Abas principais por status
             df_direito = df_final[(df_final['Status'] == 'Tem direito')]
             df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito')]
-            df_aguardando = df_final[(df_final['Status'] == 'Aguardando decisão')]
 
             # Aba Férias: todos que tiveram afastamento de férias
             ferias_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]['Matricula'].unique()
             df_ferias = df_final[df_final['Matricula'].isin(ferias_matriculas)]
+            if df_ferias.empty:
+                # Garante que a aba Férias exista, mesmo que vazia
+                df_ferias = pd.DataFrame(columns=df_final.columns)
 
-            # Aba Atrasos: soma do tempo de atraso por funcionário
-            if 'Ausência Parcial' in df_aus.columns:
+            # Aba Atrasos: todos com status "Aguardando decisão" OU afastamento de atraso
+            atrasos_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]['Matricula'].unique()
+            df_aguardando = df_final[(df_final['Status'] == 'Aguardando decisão')]
+            df_atrasos = df_final[df_final['Matricula'].isin(atrasos_matriculas) | (df_final['Status'] == 'Aguardando decisão')]
+            # Soma do tempo de atraso por funcionário (adiciona coluna se possível)
+            if 'Ausência Parcial' in df_aus.columns and not df_atrasos.empty:
                 atrasos = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]
                 def soma_tempo(series):
                     total_min = 0
@@ -170,21 +176,18 @@ def processar():
                     horas = total_min // 60
                     minutos = total_min % 60
                     return f"{horas:02d}:{minutos:02d}"
-                df_atrasos = atrasos.groupby(['Matricula', col_nome])['Ausência Parcial'].apply(soma_tempo).reset_index()
-                df_atrasos.rename(columns={'Ausência Parcial': 'Total Atraso'}, inplace=True)
-            else:
-                df_atrasos = pd.DataFrame()
+                df_soma = atrasos.groupby(['Matricula', col_nome])['Ausência Parcial'].apply(soma_tempo).reset_index()
+                df_soma.rename(columns={'Ausência Parcial': 'Total Atraso'}, inplace=True)
+                df_atrasos = pd.merge(df_atrasos, df_soma, on=['Matricula', col_nome], how='left')
 
             abas = [
                 ('Tem Direito', df_direito),
                 ('Não Tem Direito', df_nao_direito),
-                ('Aguardando decisão', df_aguardando),
                 ('Férias', df_ferias),
                 ('Atrasos', df_atrasos)
             ]
             for nome_aba, df_aba in abas:
-                if not df_aba.empty:
-                    df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
+                df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
         st.download_button("Baixar Excel Executivo", output.getvalue(), "relatorio_executivo.xlsx")
 
 processar()
