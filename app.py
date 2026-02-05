@@ -368,16 +368,10 @@ def main():
             # Mostrar tabela de resultados na interface
             st.dataframe(df_mostrar)
             
-            # Exportar resultados
+            # Exportar resultados usando a função exportar_excel para incluir aba de atestados
             if st.button("Exportar Resultados para Excel"):
-                df_exportar = df_mostrar[df_mostrar['Status'] == "Tem direito"].copy()
-                df_exportar['CPF'] = ""  # Adicione lógica para preencher CPF
-                df_exportar['CNPJ'] = "65035552000180"  # Adicione lógica para preencher CNPJ
-                df_exportar = df_exportar.rename(columns={'Valor_Premio': 'SomaDeVALOR'})
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                    df_exportar.to_excel(writer, index=False, sheet_name='Funcionarios com Direito')
-                st.download_button("Baixar Excel", output.getvalue(), "funcionarios_com_direito.xlsx")
+                output = exportar_excel(df_mostrar, df_funcionarios)
+                st.download_button("Baixar Excel", output, "relatorio_cesta_basica.xlsx")
         
         except Exception as e:
             st.error(f"Erro ao processar dados: {str(e)}")
