@@ -19,8 +19,8 @@ data_limite = st.sidebar.date_input("Data Limite de Admissão", value=datetime.n
 def calcular_premio(row, ausencias):
     VALOR_BASE = 315.00
     SALARIO_LIMITE = 2720.86
-    horas = row['horas_col']
-    salario = row['salario_col']
+    horas = row['horas']
+    salario = row['salario']
     status = "Tem direito"
     valor = VALOR_BASE
     detalhes = []
@@ -97,12 +97,18 @@ def processar():
     df_func[col_data_adm] = pd.to_datetime(df_func[col_data_adm], errors='coerce', dayfirst=True)
     df_func = df_func[df_func[col_data_adm] <= pd.to_datetime(data_limite)]
 
-    # Adiciona colunas auxiliares para cálculo robusto
-    df_func['horas_col'] = df_func[col_horas]
-    df_func['salario_col'] = df_func[col_salario]
-
-    # Aplica cálculo
-    resultado = df_func.apply(lambda row: calcular_premio(row, df_aus), axis=1)
+    # Aplica cálculo, passando horas e salário explicitamente
+    resultado = df_func.apply(
+        lambda row: calcular_premio(
+            pd.Series({
+                **row,
+                'horas': row[col_horas],
+                'salario': row[col_salario]
+            }),
+            df_aus
+        ),
+        axis=1
+    )
     df_final = pd.concat([df_func, resultado], axis=1)
     st.subheader("Relatório de Prêmios Calculados")
     st.dataframe(df_final)
