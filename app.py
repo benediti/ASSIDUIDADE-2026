@@ -367,9 +367,9 @@ def main():
             # Mostrar tabela de resultados na interface
             st.dataframe(df_mostrar)
             
-            # Exportar resultados usando a função exportar_excel para incluir aba de atestados
+            # Exportar resultados usando o DataFrame completo para garantir aba de atestados
             if st.button("Exportar Resultados para Excel"):
-                output = exportar_excel(df_mostrar, df_funcionarios)
+                output = exportar_excel(df_resultado, df_funcionarios)
                 st.download_button("Baixar Excel", output, "relatorio_cesta_basica.xlsx")
         
         except Exception as e:
