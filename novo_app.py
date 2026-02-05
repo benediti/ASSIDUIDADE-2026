@@ -30,20 +30,20 @@ def calcular_premio(row, ausencias):
     aus['Afastamento_Lower'] = aus['Afastamentos'].str.lower().str.strip()
     aus['Status_Lower'] = aus.iloc[:,1].astype(str).str.lower().str.strip() if aus.shape[1] > 1 else ''
 
-    # 1. Se houver "Atraso" ou "Férias" com "Aguardando decisão", status deve ser "Aguardando decisão"
-    if any((('atraso' in a) or ('ferias' in a)) and ('aguardando decisão' in s or 'aguardando decisao' in s)
-           for a, s in zip(aus['Afastamento_Lower'], aus['Status_Lower'])):
+
+    # 1. Se houver "Atraso" ou "Férias" na coluna de afastamentos, aplicar lógica especial
+    if aus['Afastamento_Lower'].str.contains('atraso').any():
         return pd.Series({
             'Valor_Premio': 0,
             'Status': 'Aguardando decisão',
-            'Detalhes': 'Afastamento aguardando decisão',
+            'Detalhes': 'Afastamento: Atraso',
             'Qtd_Atestados': aus['Afastamento_Lower'].str.contains('atestado').sum()
         })
 
     # Conta atestados
     dias_atestado = aus['Afastamento_Lower'].str.contains('atestado').sum()
 
-    # 2. Férias: descontar dias proporcionalmente
+    # 2. Férias: descontar dias proporcionalmente se houver "Férias" na coluna
     dias_ferias = 0
     mask_ferias = aus['Afastamento_Lower'].str.contains('ferias')
     if mask_ferias.any():
