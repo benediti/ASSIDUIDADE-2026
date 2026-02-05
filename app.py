@@ -117,7 +117,7 @@ def processar_ausencias(df):
     return df
 
 def calcular_premio(df_funcionarios, df_ausencias, data_limite_admissao):
-
+#    pass
 # NOVA FUNÇÃO PARA CESTA BÁSICA II
 def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
     VALOR_BASE = 315.00
