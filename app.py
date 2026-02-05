@@ -106,8 +106,9 @@ def processar_ausencias(df):
             return "Aguardando Decisão"
         return "Tem Direito"
     
+    # Agora 'Atestado Médico' não é impeditivo, será tratado no cálculo
     afastamentos_impeditivos = [
-        "Licença Maternidade", "Atestado Médico", "Férias", "Feriado", "Falta não justificada"
+        "Licença Maternidade", "Férias", "Feriado", "Falta não justificada"
     ]
     afastamentos_decisao = ["Abono", "Atraso"]
     
