@@ -276,13 +276,17 @@ def main():
     if uploaded_func is not None and uploaded_ausencias is not None and data_limite is not None:
         try:
             df_funcionarios = pd.read_excel(uploaded_func)
-            df_funcionarios.columns = [
+            colunas_esperadas = [
                 "Matricula", "Nome_Funcionario", "Cargo", 
                 "Codigo_Local", "Nome_Local", "Qtd_Horas_Mensais",
                 "Tipo_Contrato", "Data_Termino_Contrato", 
                 "Dias_Experiencia", "Salario_Mes_Atual", "Data_Admissao"
             ]
-            
+            if len(df_funcionarios.columns) != len(colunas_esperadas):
+                st.error(f"Erro: O arquivo de funcionários possui {len(df_funcionarios.columns)} colunas, mas o sistema espera {len(colunas_esperadas)}.\n\nColunas encontradas: {list(df_funcionarios.columns)}\nColunas esperadas: {colunas_esperadas}")
+                return
+            df_funcionarios.columns = colunas_esperadas
+
             df_ausencias = pd.read_excel(uploaded_ausencias)
             df_ausencias = processar_ausencias(df_ausencias)
             
