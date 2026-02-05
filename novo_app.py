@@ -26,9 +26,34 @@ def calcular_premio(row, ausencias):
     detalhes = []
     # Filtra ausências do funcionário
     aus = ausencias[ausencias['Matricula'] == row['Matricula']]
+    # Normaliza nomes e status
+    aus['Afastamento_Lower'] = aus['Afastamentos'].str.lower().str.strip()
+    aus['Status_Lower'] = aus.iloc[:,1].astype(str).str.lower().str.strip() if aus.shape[1] > 1 else ''
+
+    # 1. Se houver "Atraso" ou "Férias" com "Aguardando decisão", status deve ser "Aguardando decisão"
+    if any((('atraso' in a) or ('ferias' in a)) and ('aguardando decisão' in s or 'aguardando decisao' in s)
+           for a, s in zip(aus['Afastamento_Lower'], aus['Status_Lower'])):
+        return pd.Series({
+            'Valor_Premio': 0,
+            'Status': 'Aguardando decisão',
+            'Detalhes': 'Afastamento aguardando decisão',
+            'Qtd_Atestados': aus['Afastamento_Lower'].str.contains('atestado').sum()
+        })
+
     # Conta atestados
-    dias_atestado = aus['Afastamentos'].str.lower().str.contains('atestado').sum()
-    # Regras de cálculo
+    dias_atestado = aus['Afastamento_Lower'].str.contains('atestado').sum()
+
+    # 2. Férias: descontar dias proporcionalmente
+    dias_ferias = 0
+    mask_ferias = aus['Afastamento_Lower'].str.contains('ferias')
+    if mask_ferias.any():
+        # Tenta extrair quantidade de dias da coluna de status, se for número
+        try:
+            dias_ferias = pd.to_numeric(aus.loc[mask_ferias, 'Status_Lower'], errors='coerce').sum()
+        except Exception:
+            dias_ferias = 0
+
+    # Regras de cálculo padrão
     if salario > SALARIO_LIMITE:
         status = "Não tem direito"
         valor = 0
@@ -47,6 +72,11 @@ def calcular_premio(row, ausencias):
     if horas <= 120 and valor > 0:
         valor = round(valor * 0.5, 2)
         detalhes.append("Jornada 4h (50%)")
+    # Desconto proporcional de férias
+    if dias_ferias > 0 and valor > 0:
+        desconto = min(dias_ferias / 30, 1)
+        valor = round(valor * (1 - desconto), 2)
+        detalhes.append(f"Desconto férias: {dias_ferias} dias")
     return pd.Series({
         'Valor_Premio': valor,
         'Status': status,
