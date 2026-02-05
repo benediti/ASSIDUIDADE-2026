@@ -263,10 +263,9 @@ def exportar_excel(df_mostrar, df_funcionarios):
 
         relatorio_diretoria.to_excel(writer, index=False, header=False, sheet_name='Relatório Executivo')
 
-        # Adiciona aba de detalhamento de atestados
-        if 'Detalhes_Afastamentos' in df_export.columns:
-            df_atestados = df_export.copy()
-            # Extrai quantidade de atestados do texto
+        # Adiciona aba de detalhamento de atestados (usando df_mostrar para garantir abrangência)
+        if 'Detalhes_Afastamentos' in df_mostrar.columns:
+            df_atestados = df_mostrar.copy()
             import re
             def extrair_atestados(texto):
                 if not isinstance(texto, str):
@@ -276,7 +275,6 @@ def exportar_excel(df_mostrar, df_funcionarios):
                     return int(match.group(1))
                 return 0
             df_atestados['Qtd_Atestados'] = df_atestados['Detalhes_Afastamentos'].apply(extrair_atestados)
-            # Filtra só quem tem atestado
             df_atestados = df_atestados[df_atestados['Qtd_Atestados'] > 0][['Matricula','Nome','Status','Valor_Premio','Qtd_Atestados','Detalhes_Afastamentos']]
             if not df_atestados.empty:
                 df_atestados.to_excel(writer, index=False, sheet_name='Atestados')
