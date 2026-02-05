@@ -132,6 +132,7 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
         detalhes = []
         dias_atestado = 0
         falta_injustificada = False
+        status_extra = ""
         # Verifica salário
         if salario > SALARIO_LIMITE:
             status = "Não tem direito"
@@ -140,8 +141,12 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
         # Verifica ausências
         else:
             if not ausencias.empty:
+                # Se houver qualquer ausência do tipo 'Atraso', vai para aguardando decisão
+                if 'Afastamentos' in ausencias.columns and ausencias['Afastamentos'].str.contains('Atraso', case=False).any():
+                    status = "Aguardando decisão"
+                    detalhes.append("Atraso identificado")
                 # Falta injustificada
-                if 'Tem_Falta_Nao_Justificada' in ausencias.columns and ausencias['Tem_Falta_Nao_Justificada'].any():
+                elif 'Tem_Falta_Nao_Justificada' in ausencias.columns and ausencias['Tem_Falta_Nao_Justificada'].any():
                     status = "Não tem direito"
                     valor = 0
                     detalhes.append("Falta injustificada")
@@ -159,21 +164,35 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
                         texto = str(row.get('Ausencia_Integral', '')) + ' ' + str(row.get('Ausencia_Parcial', ''))
                         if 'atestado' in texto.lower():
                             dias_atestado += 1
+                    # Definir valor conforme dias de atestado (nova regra)
                     if dias_atestado == 1:
-                        valor = 240.00
-                        detalhes.append("1 dia de atestado")
+                        valor = VALOR_BASE * 0.5
+                        detalhes.append("1 dia de atestado (50% do valor)")
+                        status_extra = " - 1 atestado para receber"
                     elif dias_atestado == 2:
-                        valor = 140.00
-                        detalhes.append("2 dias de atestado")
+                        valor = VALOR_BASE * 0.25
+                        detalhes.append("2 dias de atestado (25% do valor)")
+                        status_extra = " - 2 atestados para receber"
                     elif dias_atestado >= 3:
+                        status_extra = f" - {dias_atestado} atestados para perder"
                         status = "Não tem direito"
                         valor = 0
-                        detalhes.append(f"{dias_atestado} dias de atestado")
-            # Proporcionalidade férias/afastamento previdenciário
-            if status == "Tem direito":
+                        detalhes.append(f"{dias_atestado} dias de atestado (perde o direito)")
+                    # Proporcionalidade férias/afastamento previdenciário para atestado
+                    if dias_atestado > 0 and status == "Tem direito":
+                        dias_trabalhados = 30
+                        if 'Férias' in str(ausencias.get('Afastamentos', '')).title() or 'INSS' in str(ausencias.get('Afastamentos', '')).upper():
+                            dias_faltantes = 0
+                            for _, row in ausencias.iterrows():
+                                if 'férias' in str(row.get('Afastamentos', '')).lower() or 'inss' in str(row.get('Afastamentos', '')).lower():
+                                    dias_faltantes += 1
+                            dias_trabalhados = max(0, 30 - dias_faltantes)
+                            valor = round(valor * (dias_trabalhados / 30), 2)
+                            detalhes.append(f"Proporcional: {dias_trabalhados} dias trabalhados")
+            # Proporcionalidade férias/afastamento previdenciário para quem não tem atestado
+            if status == "Tem direito" and dias_atestado == 0:
                 dias_trabalhados = 30
                 if 'Férias' in str(ausencias.get('Afastamentos', '')).title() or 'INSS' in str(ausencias.get('Afastamentos', '')).upper():
-                    # Aqui, para simplificação, considera 30 dias no mês, descontando dias de férias/afastamento
                     dias_faltantes = 0
                     for _, row in ausencias.iterrows():
                         if 'férias' in str(row.get('Afastamentos', '')).lower() or 'inss' in str(row.get('Afastamentos', '')).lower():
@@ -185,6 +204,8 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
         if horas <= 120 and valor > 0:
             valor = round(valor * 0.5, 2)
             detalhes.append("Jornada 4h (50%)")
+        # Adiciona informação de atestados ao status, se aplicável
+        status_final = status + status_extra if status_extra else status
         resultado = {
             'Matricula': func['Matricula'],
             'Nome': func['Nome_Funcionario'],
@@ -193,7 +214,7 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
             'Horas_Mensais': func['Qtd_Horas_Mensais'],
             'Data_Admissao': func['Data_Admissao'],
             'Valor_Premio': valor,
-            'Status': status,
+            'Status': status_final,
             'Detalhes_Afastamentos': "; ".join(detalhes),
             'Observações': ''
         }
