@@ -206,6 +206,10 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
             detalhes.append("Jornada 4h (50%)")
         # Adiciona informação de atestados ao status, se aplicável
         status_final = status + status_extra if status_extra else status
+        detalhes_afastamentos = "; ".join(detalhes)
+        # Adiciona informação explícita de quantidade de atestados nos detalhes
+        if dias_atestado > 0:
+            detalhes_afastamentos += f"; Quantidade de atestados: {dias_atestado}"
         resultado = {
             'Matricula': func['Matricula'],
             'Nome': func['Nome_Funcionario'],
@@ -215,7 +219,7 @@ def calcular_cesta_basica(df_funcionarios, df_ausencias, data_limite_admissao):
             'Data_Admissao': func['Data_Admissao'],
             'Valor_Premio': valor,
             'Status': status_final,
-            'Detalhes_Afastamentos': "; ".join(detalhes),
+            'Detalhes_Afastamentos': detalhes_afastamentos,
             'Observações': ''
         }
         resultados.append(resultado)
