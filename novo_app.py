@@ -193,8 +193,18 @@ def processar():
                 ('Férias', df_ferias),
                 ('Atrasos', df_atrasos)
             ]
+            pelo_menos_uma = False
             for nome_aba, df_aba in abas:
-                df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
+                if not df_aba.empty:
+                    df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
+                    pelo_menos_uma = True
+                else:
+                    # Cria aba só com cabeçalho se não houver dados
+                    if isinstance(df_aba, pd.DataFrame) and len(df_aba.columns) > 0:
+                        pd.DataFrame(columns=df_aba.columns).to_excel(writer, index=False, sheet_name=nome_aba)
+            # Se nenhuma aba teve dados, cria uma aba dummy
+            if not pelo_menos_uma:
+                pd.DataFrame({'Sem dados': []}).to_excel(writer, index=False, sheet_name='Sem Dados')
         st.download_button("Baixar Excel Executivo", output.getvalue(), "relatorio_executivo.xlsx")
 
 processar()
