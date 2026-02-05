@@ -142,17 +142,31 @@ def processar():
     df_final = pd.concat([df_func, resultado], axis=1)
     st.subheader("Relatório de Prêmios Calculados")
     st.dataframe(df_final)
-    # Exportação Excel
+    # Exportação Excel com abas separadas
     if st.button("Exportar Relatório Executivo Excel"):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_final.to_excel(writer, index=False, sheet_name='Relatório Detalhado')
-            # Aba de atestados (detecta nome da coluna de nome do funcionário)
+            # Detecta nome da coluna de nome do funcionário
             col_nome = encontrar_coluna(['nome','nomefuncionario','nome_funcionario']) or 'Nome'
-            cols_atest = ['Matricula', col_nome, 'Status', 'Valor_Premio', 'Qtd_Atestados', 'Detalhes']
-            df_atest = df_final[df_final['Qtd_Atestados'] > 0][cols_atest if all(c in df_final.columns for c in cols_atest) else df_final.columns]
-            if not df_atest.empty:
-                df_atest.to_excel(writer, index=False, sheet_name='Atestados')
+            # Abas por status
+            df_direito = df_final[df_final['Status'] == 'Tem direito']
+            df_nao_direito = df_final[df_final['Status'] == 'Não tem direito']
+            df_aguardando = df_final[df_final['Status'] == 'Aguardando decisão']
+            # Aba de atestados
+            df_atest = df_final[df_final['Qtd_Atestados'] > 0]
+            # Aba de férias
+            df_ferias = df_final[df_final.apply(lambda x: any('ferias' in str(a).lower() for a in aus_file and df_aus[df_aus['Matricula']==x['Matricula']]['Afastamentos']), axis=1)]
+
+            abas = [
+                ('Tem Direito', df_direito),
+                ('Não Tem Direito', df_nao_direito),
+                ('Aguardando decisão', df_aguardando),
+                ('Atestados', df_atest),
+                ('Férias', df_ferias)
+            ]
+            for nome_aba, df_aba in abas:
+                if not df_aba.empty:
+                    df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
         st.download_button("Baixar Excel Executivo", output.getvalue(), "relatorio_executivo.xlsx")
 
 processar()
