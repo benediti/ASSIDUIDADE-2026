@@ -148,16 +148,21 @@ def processar():
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             col_nome = encontrar_coluna(['nome','nomefuncionario','nome_funcionario']) or 'Nome'
 
-            # Abas principais por status
-            df_direito = df_final[(df_final['Status'] == 'Tem direito')]
-            df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito')]
+
+            # Identifica matrículas de férias
+            ferias_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]['Matricula'].unique()
 
             # Aba Férias: todos que tiveram afastamento de férias
-            ferias_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]['Matricula'].unique()
-            df_ferias = df_final[df_final['Matricula'].isin(ferias_matriculas)]
+            ferias_aus = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]
+            dias_ferias_por_matricula = ferias_aus.groupby('Matricula').size().to_dict()
+            df_ferias = df_final[df_final['Matricula'].isin(ferias_matriculas)].copy()
+            df_ferias['Dias_Ferias_Mes'] = df_ferias['Matricula'].map(dias_ferias_por_matricula).fillna(0).astype(int)
             if df_ferias.empty:
-                # Garante que a aba Férias exista, mesmo que vazia
-                df_ferias = pd.DataFrame(columns=df_final.columns)
+                df_ferias = pd.DataFrame(columns=list(df_final.columns) + ['Dias_Ferias_Mes'])
+
+            # Remove quem está de férias das outras abas
+            df_direito = df_final[(df_final['Status'] == 'Tem direito') & (~df_final['Matricula'].isin(ferias_matriculas))]
+            df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito') & (~df_final['Matricula'].isin(ferias_matriculas))]
 
             # Aba Atrasos: todos com status "Aguardando decisão" OU afastamento de atraso
             atrasos_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]['Matricula'].unique()
