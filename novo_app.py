@@ -199,12 +199,13 @@ def processar():
                     df_aba.to_excel(writer, index=False, sheet_name=nome_aba)
                     pelo_menos_uma = True
                 else:
-                    # Cria aba só com cabeçalho se não houver dados
+                    # Cria aba com cabeçalho e uma linha dummy se não houver dados
                     if isinstance(df_aba, pd.DataFrame) and len(df_aba.columns) > 0:
-                        pd.DataFrame(columns=df_aba.columns).to_excel(writer, index=False, sheet_name=nome_aba)
+                        dummy = {col: 'Sem dados disponíveis' for col in df_aba.columns}
+                        pd.DataFrame([dummy]).to_excel(writer, index=False, sheet_name=nome_aba)
             # Se nenhuma aba teve dados, cria uma aba dummy
             if not pelo_menos_uma:
-                pd.DataFrame({'Sem dados': []}).to_excel(writer, index=False, sheet_name='Sem Dados')
+                pd.DataFrame({'Sem dados': ['Sem dados disponíveis']}).to_excel(writer, index=False, sheet_name='Sem Dados')
         st.download_button("Baixar Excel Executivo", output.getvalue(), "relatorio_executivo.xlsx")
 
 processar()
