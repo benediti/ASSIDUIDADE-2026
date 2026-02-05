@@ -19,8 +19,8 @@ data_limite = st.sidebar.date_input("Data Limite de Admissão", value=datetime.n
 def calcular_premio(row, ausencias):
     VALOR_BASE = 315.00
     SALARIO_LIMITE = 2720.86
-    horas = row['Qtd_Horas_Mensais']
-    salario = row['Salario_Mes_Atual']
+    horas = row['horas_col']
+    salario = row['salario_col']
     status = "Tem direito"
     valor = VALOR_BASE
     detalhes = []
@@ -71,19 +71,36 @@ def processar():
     if 'Afastamentos' not in df_aus.columns:
         st.error("Coluna 'Afastamentos' não encontrada na base de ausências.")
         return
-    # Detecta nome da coluna de data de admissão
-    col_data_adm = None
-    for nome in df_func.columns:
-        if nome.lower().replace(' ', '').replace('ç','c').replace('ã','a') in [
-            'datadeadmissao', 'dataadmissao', 'admissao']:
-            col_data_adm = nome
-            break
+    # Função para encontrar colunas por possíveis nomes
+    def encontrar_coluna(possibilidades):
+        for nome in df_func.columns:
+            nome_limpo = nome.lower().replace(' ', '').replace('ç','c').replace('ã','a').replace('é','e').replace('í','i').replace('ê','e').replace('ó','o').replace('á','a').replace('ú','u')
+            if nome_limpo in possibilidades:
+                return nome
+        return None
+
+    col_data_adm = encontrar_coluna(['datadeadmissao','dataadmissao','admissao'])
+    col_horas = encontrar_coluna(['qtdhorasmensais','horasmensais','horas','qtdhoras'])
+    col_salario = encontrar_coluna(['salariomesatual','salariomesatu','salariomes','salario','saláriomesatual','saláriomesatu','saláriomes'])
+
     if not col_data_adm:
         st.error("Coluna de data de admissão não encontrada na base de funcionários.")
         return
+    if not col_horas:
+        st.error("Coluna de horas mensais não encontrada na base de funcionários.")
+        return
+    if not col_salario:
+        st.error("Coluna de salário não encontrada na base de funcionários.")
+        return
+
     # Filtra por data de admissão
     df_func[col_data_adm] = pd.to_datetime(df_func[col_data_adm], errors='coerce', dayfirst=True)
     df_func = df_func[df_func[col_data_adm] <= pd.to_datetime(data_limite)]
+
+    # Adiciona colunas auxiliares para cálculo robusto
+    df_func['horas_col'] = df_func[col_horas]
+    df_func['salario_col'] = df_func[col_salario]
+
     # Aplica cálculo
     resultado = df_func.apply(lambda row: calcular_premio(row, df_aus), axis=1)
     df_final = pd.concat([df_func, resultado], axis=1)
@@ -94,8 +111,10 @@ def processar():
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_final.to_excel(writer, index=False, sheet_name='Relatório Detalhado')
-            # Aba de atestados
-            df_atest = df_final[df_final['Qtd_Atestados'] > 0][['Matricula','Nome_Funcionario','Status','Valor_Premio','Qtd_Atestados','Detalhes']]
+            # Aba de atestados (detecta nome da coluna de nome do funcionário)
+            col_nome = encontrar_coluna(['nome','nomefuncionario','nome_funcionario']) or 'Nome'
+            cols_atest = ['Matricula', col_nome, 'Status', 'Valor_Premio', 'Qtd_Atestados', 'Detalhes']
+            df_atest = df_final[df_final['Qtd_Atestados'] > 0][cols_atest if all(c in df_final.columns for c in cols_atest) else df_final.columns]
             if not df_atest.empty:
                 df_atest.to_excel(writer, index=False, sheet_name='Atestados')
         st.download_button("Baixar Excel Executivo", output.getvalue(), "relatorio_executivo.xlsx")
