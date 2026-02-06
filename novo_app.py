@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+import unicodedata
 
 st.set_page_config(page_title="Cálculo de Prêmio - Nova Lógica", layout="wide")
 st.title("Sistema de Cálculo de Prêmio - Nova Lógica")
@@ -15,6 +16,13 @@ tipo_file = st.sidebar.file_uploader("Tipos de Afastamento (opcional)", type=["x
 
 data_limite = st.sidebar.date_input("Data Limite de Admissão", value=datetime.now())
 
+def normalizar_texto(valor):
+    if pd.isna(valor):
+        return ''
+    texto = unicodedata.normalize('NFKD', str(valor))
+    texto = texto.encode('ASCII', 'ignore').decode('ASCII')
+    return texto.lower().strip()
+
 # Função para cálculo do prêmio considerando atestados
 def calcular_premio(row, ausencias):
     VALOR_BASE = 315.00
@@ -25,31 +33,36 @@ def calcular_premio(row, ausencias):
     valor = VALOR_BASE
     detalhes = []
     # Filtra ausências do funcionário
-    aus = ausencias[ausencias['Matricula'] == row['Matricula']]
-    # Normaliza nomes e status
-    aus['Afastamento_Lower'] = aus['Afastamentos'].str.lower().str.strip()
-    aus['Status_Lower'] = aus.iloc[:,1].astype(str).str.lower().str.strip() if aus.shape[1] > 1 else ''
+    aus = ausencias[ausencias['Matricula'] == row['Matricula']].copy()
+    if 'Afastamentos_Normalizado' in aus.columns:
+        aus['Afastamento_Normalizado'] = aus['Afastamentos_Normalizado']
+    else:
+        aus['Afastamento_Normalizado'] = aus['Afastamentos'].apply(normalizar_texto)
+    if aus.shape[1] > 1:
+        aus['Status_Normalizado'] = aus.iloc[:,1].apply(normalizar_texto)
+    else:
+        aus['Status_Normalizado'] = ''
 
 
     # 1. Se houver "Atraso" ou "Férias" na coluna de afastamentos, aplicar lógica especial
-    if aus['Afastamento_Lower'].str.contains('atraso').any():
+    if aus['Afastamento_Normalizado'].str.contains('atraso').any():
         return pd.Series({
             'Valor_Premio': 0,
             'Status': 'Aguardando decisão',
             'Detalhes': 'Afastamento: Atraso',
-            'Qtd_Atestados': aus['Afastamento_Lower'].str.contains('atestado').sum()
+            'Qtd_Atestados': aus['Afastamento_Normalizado'].str.contains('atestado').sum()
         })
 
     # Conta atestados
-    dias_atestado = aus['Afastamento_Lower'].str.contains('atestado').sum()
+    dias_atestado = aus['Afastamento_Normalizado'].str.contains('atestado').sum()
 
     # 2. Férias: descontar dias proporcionalmente se houver "Férias" na coluna
     dias_ferias = 0
-    mask_ferias = aus['Afastamento_Lower'].str.contains('ferias')
+    mask_ferias = aus['Afastamento_Normalizado'].str.contains('ferias')
     if mask_ferias.any():
         # Tenta extrair quantidade de dias da coluna de status, se for número
         try:
-            dias_ferias = pd.to_numeric(aus.loc[mask_ferias, 'Status_Lower'], errors='coerce').sum()
+            dias_ferias = pd.to_numeric(aus.loc[mask_ferias, 'Status_Normalizado'], errors='coerce').sum()
         except Exception:
             dias_ferias = 0
 
@@ -101,6 +114,7 @@ def processar():
     if 'Afastamentos' not in df_aus.columns:
         st.error("Coluna 'Afastamentos' não encontrada na base de ausências.")
         return
+    df_aus['Afastamentos_Normalizado'] = df_aus['Afastamentos'].fillna('').apply(normalizar_texto)
     # Função para encontrar colunas por possíveis nomes
     def encontrar_coluna(df, possibilidades):
         for nome in df.columns:
@@ -124,7 +138,7 @@ def processar():
         st.error("Coluna de salário não encontrada na base de funcionários.")
         return
 
-    ferias_mask_base = df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)
+    ferias_mask_base = df_aus['Afastamentos_Normalizado'].str.contains('ferias', na=False)
     if col_falta_aus:
         ferias_mask_base = ferias_mask_base & df_aus[col_falta_aus].astype(str).str.strip().str.upper().eq('F')
     ferias_aus_all = df_aus[ferias_mask_base].copy()
