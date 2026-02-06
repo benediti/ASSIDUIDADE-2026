@@ -102,16 +102,16 @@ def processar():
         st.error("Coluna 'Afastamentos' não encontrada na base de ausências.")
         return
     # Função para encontrar colunas por possíveis nomes
-    def encontrar_coluna(possibilidades):
-        for nome in df_func.columns:
+    def encontrar_coluna(df, possibilidades):
+        for nome in df.columns:
             nome_limpo = nome.lower().replace(' ', '').replace('ç','c').replace('ã','a').replace('é','e').replace('í','i').replace('ê','e').replace('ó','o').replace('á','a').replace('ú','u')
             if nome_limpo in possibilidades:
                 return nome
         return None
 
-    col_data_adm = encontrar_coluna(['datadeadmissao','dataadmissao','admissao'])
-    col_horas = encontrar_coluna(['qtdhorasmensais','horasmensais','horas','qtdhoras'])
-    col_salario = encontrar_coluna(['salariomesatual','salariomesatu','salariomes','salario','saláriomesatual','saláriomesatu','saláriomes'])
+    col_data_adm = encontrar_coluna(df_func, ['datadeadmissao','dataadmissao','admissao'])
+    col_horas = encontrar_coluna(df_func, ['qtdhorasmensais','horasmensais','horas','qtdhoras'])
+    col_salario = encontrar_coluna(df_func, ['salariomesatual','salariomesatu','salariomes','salario','saláriomesatual','saláriomesatu','saláriomes'])
 
     if not col_data_adm:
         st.error("Coluna de data de admissão não encontrada na base de funcionários.")
@@ -146,39 +146,83 @@ def processar():
     if st.button("Exportar Relatório Executivo Excel"):
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            col_nome = encontrar_coluna(['nome','nomefuncionario','nome_funcionario']) or 'Nome'
+            col_nome = encontrar_coluna(df_func, ['nome','nomefuncionario','nome_funcionario']) or 'Nome'
+            col_data_aus = encontrar_coluna(df_aus, ['data','dataafastamento','datainicio','datadeinicio','periodoinicial','datadoafastamento'])
 
+            # Identifica matrículas e registros de férias
+            ferias_mask = df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)
+            ferias_aus = df_aus[ferias_mask].copy()
+            ferias_matriculas = ferias_aus['Matricula'].unique()
 
-            # Identifica matrículas de férias
-            ferias_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]['Matricula'].unique()
+            if col_data_aus:
+                ferias_aus[col_data_aus] = pd.to_datetime(ferias_aus[col_data_aus], errors='coerce', dayfirst=True)
+                ferias_aus_mes = ferias_aus[
+                    (ferias_aus[col_data_aus].dt.month == data_limite.month) &
+                    (ferias_aus[col_data_aus].dt.year == data_limite.year)
+                ].copy()
+            else:
+                ferias_aus_mes = ferias_aus.copy()
 
-            # Aba Férias: todos que tiveram afastamento de férias
-            ferias_aus = df_aus[df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)]
-            dias_ferias_por_matricula = ferias_aus.groupby('Matricula').size().to_dict()
+            def resumir_dias(series):
+                datas_validas = sorted({d.date() for d in series.dropna()})
+                if not datas_validas:
+                    return pd.Series({'Dias_Ferias_Mes': '', 'Qtd_Dias_Ferias_Mes': 0})
+                return pd.Series({
+                    'Dias_Ferias_Mes': ", ".join([d.strftime('%d/%m') for d in datas_validas]),
+                    'Qtd_Dias_Ferias_Mes': len(datas_validas)
+                })
+
+            if not ferias_aus_mes.empty:
+                if col_data_aus:
+                    dias_resumo = ferias_aus_mes.groupby('Matricula')[col_data_aus].apply(resumir_dias).reset_index()
+                else:
+                    dias_resumo = ferias_aus_mes.groupby('Matricula').size().reset_index(name='Qtd_Dias_Ferias_Mes')
+                    dias_resumo['Dias_Ferias_Mes'] = ''
+                    dias_resumo = dias_resumo[['Matricula','Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes']]
+            else:
+                dias_resumo = pd.DataFrame(columns=['Matricula','Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes'])
+
             df_ferias = df_final[df_final['Matricula'].isin(ferias_matriculas)].copy()
-            df_ferias['Dias_Ferias_Mes'] = df_ferias['Matricula'].map(dias_ferias_por_matricula).fillna(0).astype(int)
+            df_ferias['Dias_Ferias_Mes'] = ''
+            df_ferias['Qtd_Dias_Ferias_Mes'] = 0
+            if not dias_resumo.empty and not df_ferias.empty:
+                df_ferias = df_ferias.merge(dias_resumo, on='Matricula', how='left', suffixes=('', '_Resumo'))
+                df_ferias['Dias_Ferias_Mes'] = df_ferias['Dias_Ferias_Mes_Resumo'].fillna('')
+                df_ferias['Qtd_Dias_Ferias_Mes'] = df_ferias['Qtd_Dias_Ferias_Mes_Resumo'].fillna(0).astype(int)
+                df_ferias.drop(columns=['Dias_Ferias_Mes_Resumo','Qtd_Dias_Ferias_Mes_Resumo'], inplace=True)
             if df_ferias.empty:
-                df_ferias = pd.DataFrame(columns=list(df_final.columns) + ['Dias_Ferias_Mes'])
+                df_ferias = pd.DataFrame(columns=list(df_final.columns) + ['Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes'])
+
+            df_ferias_detalhado = ferias_aus_mes.copy()
+            if not df_ferias_detalhado.empty:
+                if col_data_aus:
+                    df_ferias_detalhado['Dia_Mes'] = df_ferias_detalhado[col_data_aus].dt.strftime('%d/%m/%Y')
+                else:
+                    df_ferias_detalhado['Dia_Mes'] = ''
+            else:
+                df_ferias_detalhado = pd.DataFrame(columns=list(ferias_aus.columns) + ['Dia_Mes'])
 
             # Remove quem está de férias de todas as outras abas
             filtro_nao_ferias = ~df_final['Matricula'].isin(ferias_matriculas)
             df_direito = df_final[(df_final['Status'] == 'Tem direito') & filtro_nao_ferias]
             df_nao_direito = df_final[(df_final['Status'] == 'Não tem direito') & filtro_nao_ferias]
-            df_atrasos = df_atrasos[filtro_nao_ferias] if not df_atrasos.empty else df_atrasos
 
             # Aba Atrasos: todos com status "Aguardando decisão" OU afastamento de atraso
             atrasos_matriculas = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]['Matricula'].unique()
-            df_aguardando = df_final[(df_final['Status'] == 'Aguardando decisão')]
             df_atrasos = df_final[df_final['Matricula'].isin(atrasos_matriculas) | (df_final['Status'] == 'Aguardando decisão')]
+            if not df_atrasos.empty:
+                df_atrasos = df_atrasos[filtro_nao_ferias]
+
             # Soma do tempo de atraso por funcionário (adiciona coluna se possível)
             if 'Ausência Parcial' in df_aus.columns and not df_atrasos.empty:
                 atrasos = df_aus[df_aus['Afastamentos'].str.lower().str.contains('atraso', na=False)]
                 def soma_tempo(series):
                     total_min = 0
                     for t in series:
-                        if pd.isna(t): continue
+                        if pd.isna(t):
+                            continue
                         partes = str(t).replace('-', '').split(':')
-                        if len(partes) == 2:
+                        if len(partes) == 2 and partes[0].isdigit() and partes[1].isdigit():
                             total_min += int(partes[0])*60 + int(partes[1])
                     horas = total_min // 60
                     minutos = total_min % 60
@@ -191,6 +235,7 @@ def processar():
                 ('Tem Direito', df_direito),
                 ('Não Tem Direito', df_nao_direito),
                 ('Férias', df_ferias),
+                ('Férias Detalhado', df_ferias_detalhado),
                 ('Atrasos', df_atrasos)
             ]
             pelo_menos_uma = False
