@@ -147,10 +147,14 @@ def processar():
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             col_nome = encontrar_coluna(df_func, ['nome','nomefuncionario','nome_funcionario']) or 'Nome'
+            col_nome_aus = encontrar_coluna(df_aus, ['nome','nomefuncionario','nome_funcionario'])
             col_data_aus = encontrar_coluna(df_aus, ['data','dataafastamento','datainicio','datadeinicio','periodoinicial','datadoafastamento'])
+            col_falta = encontrar_coluna(df_aus, ['falta','faltas','indicadorfalta','indicador','tipoafastamento'])
 
             # Identifica matrículas e registros de férias
             ferias_mask = df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)
+            if col_falta:
+                ferias_mask = ferias_mask & df_aus[col_falta].astype(str).str.strip().str.upper().eq('F')
             ferias_aus = df_aus[ferias_mask].copy()
             ferias_matriculas = ferias_aus['Matricula'].unique()
 
@@ -173,20 +177,29 @@ def processar():
                 })
 
             if not ferias_aus_mes.empty:
+                group_cols = ['Matricula']
+                if col_nome_aus:
+                    group_cols.append(col_nome_aus)
                 if col_data_aus:
-                    dias_resumo = ferias_aus_mes.groupby('Matricula')[col_data_aus].apply(resumir_dias).reset_index()
+                    dias_resumo = ferias_aus_mes.groupby(group_cols)[col_data_aus].apply(resumir_dias).reset_index()
                 else:
-                    dias_resumo = ferias_aus_mes.groupby('Matricula').size().reset_index(name='Qtd_Dias_Ferias_Mes')
+                    dias_resumo = ferias_aus_mes.groupby(group_cols).size().reset_index(name='Qtd_Dias_Ferias_Mes')
                     dias_resumo['Dias_Ferias_Mes'] = ''
-                    dias_resumo = dias_resumo[['Matricula','Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes']]
+                    dias_resumo = dias_resumo[group_cols + ['Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes']]
+                if col_nome_aus and col_nome_aus != col_nome:
+                    dias_resumo.rename(columns={col_nome_aus: col_nome}, inplace=True)
             else:
-                dias_resumo = pd.DataFrame(columns=['Matricula','Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes'])
+                base_cols = ['Matricula', col_nome] if col_nome else ['Matricula']
+                dias_resumo = pd.DataFrame(columns=base_cols + ['Dias_Ferias_Mes','Qtd_Dias_Ferias_Mes'])
 
             df_ferias = df_final[df_final['Matricula'].isin(ferias_matriculas)].copy()
             df_ferias['Dias_Ferias_Mes'] = ''
             df_ferias['Qtd_Dias_Ferias_Mes'] = 0
             if not dias_resumo.empty and not df_ferias.empty:
-                df_ferias = df_ferias.merge(dias_resumo, on='Matricula', how='left', suffixes=('', '_Resumo'))
+                merge_cols = ['Matricula']
+                if col_nome and col_nome in df_ferias.columns and col_nome in dias_resumo.columns:
+                    merge_cols.append(col_nome)
+                df_ferias = df_ferias.merge(dias_resumo, on=merge_cols, how='left', suffixes=('', '_Resumo'))
                 df_ferias['Dias_Ferias_Mes'] = df_ferias['Dias_Ferias_Mes_Resumo'].fillna('')
                 df_ferias['Qtd_Dias_Ferias_Mes'] = df_ferias['Qtd_Dias_Ferias_Mes_Resumo'].fillna(0).astype(int)
                 df_ferias.drop(columns=['Dias_Ferias_Mes_Resumo','Qtd_Dias_Ferias_Mes_Resumo'], inplace=True)
