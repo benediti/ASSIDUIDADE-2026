@@ -112,6 +112,7 @@ def processar():
     col_data_adm = encontrar_coluna(df_func, ['datadeadmissao','dataadmissao','admissao'])
     col_horas = encontrar_coluna(df_func, ['qtdhorasmensais','horasmensais','horas','qtdhoras'])
     col_salario = encontrar_coluna(df_func, ['salariomesatual','salariomesatu','salariomes','salario','saláriomesatual','saláriomesatu','saláriomes'])
+    col_falta_aus = encontrar_coluna(df_aus, ['falta','faltas','indicadorfalta','indicador','tipoafastamento'])
 
     if not col_data_adm:
         st.error("Coluna de data de admissão não encontrada na base de funcionários.")
@@ -122,6 +123,12 @@ def processar():
     if not col_salario:
         st.error("Coluna de salário não encontrada na base de funcionários.")
         return
+
+    ferias_mask_base = df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)
+    if col_falta_aus:
+        ferias_mask_base = ferias_mask_base & df_aus[col_falta_aus].astype(str).str.strip().str.upper().eq('F')
+    ferias_aus_all = df_aus[ferias_mask_base].copy()
+    ferias_matriculas = ferias_aus_all['Matricula'].unique()
 
     # Filtra por data de admissão
     df_func[col_data_adm] = pd.to_datetime(df_func[col_data_adm], errors='coerce', dayfirst=True)
@@ -140,6 +147,16 @@ def processar():
         axis=1
     )
     df_final = pd.concat([df_func, resultado], axis=1)
+    if ferias_matriculas.size > 0:
+        mask_ferias_func = df_final['Matricula'].isin(ferias_matriculas)
+        if mask_ferias_func.any():
+            detalhe_msg = 'Em férias - calcular à parte'
+            df_final.loc[mask_ferias_func, 'Status'] = 'Férias'
+            df_final.loc[mask_ferias_func, 'Valor_Premio'] = 0
+            detalhes_atual = df_final.loc[mask_ferias_func, 'Detalhes'].fillna('').astype(str)
+            df_final.loc[mask_ferias_func, 'Detalhes'] = detalhes_atual.apply(
+                lambda txt: detalhe_msg if txt.strip() == '' else f"{txt}; {detalhe_msg}"
+            )
     st.subheader("Relatório de Prêmios Calculados")
     st.dataframe(df_final)
     # Exportação Excel com abas separadas e lógica aprimorada
@@ -149,16 +166,9 @@ def processar():
             col_nome = encontrar_coluna(df_func, ['nome','nomefuncionario','nome_funcionario']) or 'Nome'
             col_nome_aus = encontrar_coluna(df_aus, ['nome','nomefuncionario','nome_funcionario'])
             col_data_aus = encontrar_coluna(df_aus, ['data','dataafastamento','datainicio','datadeinicio','periodoinicial','datadoafastamento'])
-            col_falta = encontrar_coluna(df_aus, ['falta','faltas','indicadorfalta','indicador','tipoafastamento'])
 
-            # Identifica matrículas e registros de férias
-            ferias_mask = df_aus['Afastamentos'].str.lower().str.contains('ferias', na=False)
-            if col_falta:
-                ferias_mask = ferias_mask & df_aus[col_falta].astype(str).str.strip().str.upper().eq('F')
-            ferias_aus = df_aus[ferias_mask].copy()
-            ferias_matriculas = ferias_aus['Matricula'].unique()
-
-            if col_data_aus:
+            ferias_aus = ferias_aus_all.copy()
+            if col_data_aus and not ferias_aus.empty:
                 ferias_aus[col_data_aus] = pd.to_datetime(ferias_aus[col_data_aus], errors='coerce', dayfirst=True)
                 ferias_aus_mes = ferias_aus[
                     (ferias_aus[col_data_aus].dt.month == data_limite.month) &
@@ -166,7 +176,6 @@ def processar():
                 ].copy()
             else:
                 ferias_aus_mes = ferias_aus.copy()
-
             def resumir_dias(series):
                 datas_validas = sorted({d.date() for d in series.dropna()})
                 if not datas_validas:
